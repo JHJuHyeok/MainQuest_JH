@@ -4,69 +4,83 @@ using UnityEngine;
 
 public class PlayerMove : MonoBehaviour
 {
+    [Header("Movement")]
     public float speed = 5.0f;
     public float rotSpeed = 5.0f;
     public float jumbPower = 5.0f;
+    public float gravity = 10.0f;
+    private Vector3 velocity;
+
+    [Header("Direction")]
+    public Vector3 dir = Vector3.zero;
+    private CharacterController cc;
+
+    [Header("Camera")]
+    [SerializeField] private Camera camera;
+    public Quaternion cameraDir;
     public float smoothness = 10f;
 
-    public Vector3 dir = Vector3.zero;
-    private Rigidbody rb;
-    [SerializeField] private Camera camera;
-
+    [Header("GroundCheck")]
+    [SerializeField] private Transform groundCheck;
+    [SerializeField] private float groundCheckRadius = 0.15f;
+    [SerializeField] private LayerMask groundLayer;
     private bool isGround = true;
 
     PlayerAnim pa;
 
 
-    private void Start()
+    private void Awake()
     {
         pa = GetComponent<PlayerAnim>();
-        rb = GetComponent<Rigidbody>();
+        cc = GetComponent<CharacterController>();
     }
 
     public void Move()
     {
+        if (cc == null) return;
+
         // 입력 처리
         dir.x = Input.GetAxisRaw("Horizontal");
         dir.z = Input.GetAxisRaw("Vertical");
-        dir.Normalize();
+        cameraDir = Quaternion.Euler(0.0f, camera.transform.eulerAngles.y, 0.0f);
 
-        if (dir != Vector3.zero)
-        {
-            // 캐릭터 회전
-            transform.forward = Vector3.Lerp(transform.forward, dir, rotSpeed * Time.deltaTime);
-            pa.SetMoveAnim(true);       // 달리기 모션
-        }
-        else pa.SetMoveAnim(false);     // 걷는 모션
-        
-        // 움직임
-        rb.MovePosition(gameObject.transform.position + dir * speed * Time.deltaTime);
+        Vector3 curVec = (cameraDir * dir).normalized;
+        Vector3 move = curVec * speed;
+        move.y = velocity.y;
+
+        cc.Move(curVec * speed * Time.deltaTime);
+        pa.UpdateSpeed(cc.velocity, speed);
     }
+
     public void Jump()
     {
-        if(Input.GetKeyDown(KeyCode.Space) && isGround)
+        if (isGround && velocity.y < 0.0f)
         {
-            rb.AddForce(Vector3.up * jumbPower, ForceMode.Impulse);
-            pa.SetJumpAnim(true);
+            velocity.y = -1.0f;
         }
-        if (transform.position.y < 0.05f && rb.velocity.y < 0)
-            pa.SetJumpAnim(false);
-    }
-    public void CheckGround()
-    {
-        RaycastHit hit;
-
-        if(Physics.Raycast(transform.position, Vector3.down, out hit, 0.15f))
+        else
         {
-            if(hit.transform.tag != null)
+            velocity.y -= gravity * Time.deltaTime;
+        }
+        
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            velocity.y = jumbPower;
+
+            if(pa != null)
             {
-                isGround = true;
-                return;
+                StartCoroutine(pa.PulseBool("isJumping"));
             }
         }
-        isGround = false;
     }
 
+    // 지면 체크
+    public void CheckGround()
+    {
+        isGround = Physics.CheckSphere(groundCheck.position, groundCheckRadius, groundLayer);
+    }
+
+    // 카메라 조작
     public void RotateCamera()
     {
         Vector3 playerRotate = Vector3.Scale(camera.transform.forward, new Vector3(1, 0, 1));
